@@ -1,0 +1,28 @@
+---
+layout: null
+---
+
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+ <title>{{{ @root.site.title }}}</title>
+ <link href="{{{ @root.site.url }}}{{{ root }}}/atom.xml" rel="self"/>
+ <link href="{{{ @root.site.url }}}{{{ root }}}/"/>
+ <updated>{{{date_to_xmlschema @root.site.time}}}</updated>
+ <id>{{{ @root.site.url }}}</id>
+ <author>
+   <name>{{{ @root.site.author.name }}}</name>
+   <email>{{{ @root.site.author.email }}}</email>
+ </author>
+
+ {{#each @root.site.posts as |post|}}
+ <entry>
+   <title>{{{xml_escape @post.data.title}}}</title>
+   <link href="{{{ @root.site.url }}}{{{ root }}}{{{ @post.data.url }}}"/>
+   <updated>{{{date_to_xmlschema @post.data.date}}}</updated>
+   <id>{{{ @root.site.url }}}{{{ @post.data.id }}}</id>
+   <content type="html">{{{@post.html}}}</content>
+ </entry>
+ {{/each}}
+
+</feed>

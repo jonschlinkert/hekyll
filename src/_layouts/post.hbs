@@ -1,0 +1,25 @@
+---
+layout: default
+---
+
+<article class="post">
+  <h1 class="post-title">{{{ @page.title }}}</h1>
+  <time datetime="{{{date_to_xmlschema @page.date}}}" class="post-date">{{{date_to_string @page.date}}}</time>
+  {% body %}
+</article>
+
+{{#if (isnt @root.site.related_posts empty)}}
+<aside class="related">
+  <h3>Related posts</h3>
+  <ul class="related-posts">
+    {{#each (limit @root.site.related_posts 3) as |post|}}
+      <li>
+        <a href="{{{ root }}}{{{ @post.data.url }}}">
+          {{{ @post.data.title }}}
+          <small><time datetime="{{{date_to_xmlschema @post.data.date}}}">{{{date_to_string @post.data.date}}}</time></small>
+        </a>
+      </li>
+    {{/each}}
+  </ul>
+</aside>
+{{/if}}
