@@ -10,8 +10,6 @@
   },
   "license": "MIT",
   "files": [
-    "assemblefile.js",
-    "dist",
     "index.js"
   ],
   "main": "index.js",
@@ -22,44 +20,26 @@
     "test": "mocha"
   },
   "dependencies": {
-    "ent": "^2.2.0",
-    "gulp-middleware": "^0.1.0"
-  },
-  "devDependencies": {
-    "assemble": "^0.24.3",
-    "assemble-helpers": "^1.0.1",
-    "assemble-middleware-page-variable": "^0.1.0",
-    "cheerio": "^1.0.0-rc.1",
-    "define-property": "^1.0.0",
     "delete": "^1.0.1",
-    "export-files": "^2.1.1",
-    "get-value": "^2.0.6",
-    "gulp-format-md": "^0.1.12",
     "gulp-liquid-to-handlebars": "^0.1.0",
-    "gulp-sass": "^3.1.0",
-    "handlebars-helpers": "^0.8.2",
-    "handlebars-utils": "^0.2.1",
-    "highlight.js": "^9.12.0",
-    "js-yaml": "^3.8.4",
-    "liquid-to-handlebars": "^1.0.2",
-    "moment-strftime": "^0.2.1",
-    "object.omit": "^2.0.1",
-    "object.pick": "^1.2.0",
-    "permalinks": "^1.2.1",
-    "plugin-error": "^0.1.2",
-    "remarkable": "^1.7.1",
-    "right-pad-keys": "^0.1.2",
-    "set-value": "^1.0.0",
-    "split-string": "^2.1.1",
+    "is-valid-app": "^0.3.0",
     "through2": "^2.0.3",
-    "unescape": "^1.0.1",
-    "vinyl": "^2.0.2",
     "vinyl-fs": "^2.4.4"
   },
+  "devDependencies": {
+    "gulp-format-md": "^0.1.12",
+    "mocha": "^3.4.2"
+  },
   "keywords": [
-    "generategenerator",
     "hekyll"
   ],
+  "lintDeps": {
+    "lock": {
+      "options": {
+        "cheerio": "0.22.0"
+      }
+    }
+  },
   "verb": {
     "toc": false,
     "layout": "default",
