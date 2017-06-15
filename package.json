@@ -1,6 +1,6 @@
 {
   "name": "hekyll",
-  "description": "Migrate Jekyll themes to use handlebars instead of liquid.",
+  "description": "Migrate Jekyll (gh-pages) themes to use handlebars instead of liquid.",
   "version": "0.1.0",
   "homepage": "https://github.com/jonschlinkert/hekyll",
   "author": "Jon Schlinkert (https://github.com/jonschlinkert)",
@@ -50,6 +50,19 @@
     ],
     "plugins": [
       "gulp-format-md"
+    ],
+    "related": {
+      "list": [
+        "liquid-to-handlebars",
+        "assemble",
+        "gulp-liquid-to-handlebars"
+      ]
+    },
+    "reflinks": [
+      "assemble",
+      "gulp",
+      "handlebars-helpers",
+      "template-helpers"
     ],
     "lint": {
       "reflinks": true

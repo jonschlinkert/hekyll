@@ -1,6 +1,6 @@
 # hekyll [![NPM version](https://img.shields.io/npm/v/hekyll.svg?style=flat)](https://www.npmjs.com/package/hekyll) [![NPM monthly downloads](https://img.shields.io/npm/dm/hekyll.svg?style=flat)](https://npmjs.org/package/hekyll) [![NPM total downloads](https://img.shields.io/npm/dt/hekyll.svg?style=flat)](https://npmjs.org/package/hekyll) [![Linux Build Status](https://img.shields.io/travis/jonschlinkert/hekyll.svg?style=flat&label=Travis)](https://travis-ci.org/jonschlinkert/hekyll)
 
-> Migrate Jekyll themes to use handlebars instead of liquid.
+> Migrate Jekyll (gh-pages) themes to use handlebars instead of liquid.
 
 ## Install
 
@@ -12,57 +12,97 @@ $ npm install --save hekyll
 
 ## Usage
 
+To run hekyll, you will need to pass an instance of [gulp](http://gulpjs.com) or [assemble](https://github.com/assemble/assemble). This allows you to override any of hekyll's built-in tasks with a custom task.
+
 ```js
 var hekyll = require('hekyll');
+
+hekyll(gulp_or_assemble, {
+  task: 'hekyll', 
+  theme: 'poole',
+  themes: 'vendor',
+  dest: 'src' //<= this will become your "handlebars" src templates
+});
 ```
 
-## Steps
+**Options**
 
-### 1. Install hekyll
+* `task`: the task name to use for running hekyll. Default is `hekyll`
+* `theme`: the name of the liquid theme to migrate. Example: `poole`
+* `themes`: the parent directory of the liquid theme. Example: `themes`. This is joined to the `theme` name at build time.
+* `dest`: the destination path for the converted theme.
 
-Git clone this library, <kbd>cd</kbd> into the project, then install its dependencies using [npm](https://www.npmjs.com) with this single command:
+### Gulp example
+
+Download a theme:
 
 ```sh
-$ git clone https://github.com/jonschlinkert/hekyll.git && cd hekyll && npm install hekyll
+$ git clone https://github.com/poole/poole.git themes/poole
 ```
 
-### 2. Clone the theme you want
+Then build with gulp:
 
-Clone the theme you want into the `vendor` directory, or whatever directory you prefer.
+```js
+var gulp = require('gulp');
 
-**Example: poole theme**
+hekyll(gulp, {
+  task: 'hekyll', 
+  theme: 'poole',
+  themes: 'themes',
+  dest: 'src' //<= this will become your "handlebars" src templates
+});
 
-For example, to clone the popular [poole theme](https://github.com/poole/poole), from @mdo do:
+gulp.task('default', ['hekyll']);
+```
+
+### Assemble example
+
+Download a theme:
 
 ```sh
-$ git clone https://github.com/poole/poole.git vendor/poole
+$ git clone https://github.com/poole/poole.git themes/poole
 ```
 
-**Example: caymen theme**
+Then build with gulp:
 
-For example, to clone the popular [jekyll-caymen-theme](https://github.com/pietromenna/jekyll-cayman-theme), do:
+```js
+var assemble = require('assemble');
+var app = module.exports = assemble();
 
-```sh
-$ git clone https://github.com/pietromenna/jekyll-cayman-theme.git vendor/caymen
+hekyll(app, {
+  task: 'hekyll', 
+  theme: 'poole',
+  themes: 'themes',
+  dest: 'src' //<= this will become your "handlebars" src templates
+});
+
+app.task('default', ['hekyll']);
 ```
 
-**Example: minima theme**
+## Choosing a theme
 
-Or to clone jekyll's [minima-theme](https://github.com/jekyll/minima) do:
+~20 jekyll themes were tested during the creation of this library, including all of the [poole/poole themes](https://github.com/poole/poole) from [@mdo](https://github.com/mdo), and all of the built-in [gh-pages themes](https://pages.github.com/themes/). Most themes convert flawlessly, but some have nuances that might require some manual editing.
 
-```sh
-$ git clone https://github.com/jekyll/minima.git vendor/minima
-```
+**Handlebars helpers**
 
-### 3. Convert the theme
+To be able to render the migrated templates with handlebars, you will first need to include any missing handlebars helpers that were converted from liquid filters and tags during the migration.
 
-Before you can customize and build your site, you'll need to convert the jekyll site and liquid templates over to use [handlebars](http://www.handlebarsjs.com/) templates:
+Here are some libraries that might be useful for this:
 
-```sh
-$ hekyll
-```
+* [template-helpers](https://github.com/jonschlinkert/template-helpers) - generic helpers that can be used with any template engine.
+* [handlebars-helpers](https://github.com/helpers/handlebars-helpers) - more than 150 handlebars helpers
+
+**Bug reports**
+
+If you find a bug or something that doesn't convert correctly, [please let me know](../../issues/new), I want this to work as seamlessly as possible.
 
 ## About
+
+### Related projects
+
+* [assemble](https://www.npmjs.com/package/assemble): Get the rocks out of your socks! Assemble makes you fast at creating web projects… [more](https://github.com/assemble/assemble) | [homepage](https://github.com/assemble/assemble "Get the rocks out of your socks! Assemble makes you fast at creating web projects. Assemble is used by thousands of projects for rapid prototyping, creating themes, scaffolds, boilerplates, e-books, UI components, API documentation, blogs, building websit")
+* [gulp-liquid-to-handlebars](https://www.npmjs.com/package/gulp-liquid-to-handlebars): Convert liquid templates to handlebars templates. There are so many resources for jekyll and liquid… [more](https://github.com/jonschlinkert/gulp-liquid-to-handlebars) | [homepage](https://github.com/jonschlinkert/gulp-liquid-to-handlebars "Convert liquid templates to handlebars templates. There are so many resources for jekyll and liquid on github, but handlebars is a better engine for javascript. ")
+* [liquid-to-handlebars](https://www.npmjs.com/package/liquid-to-handlebars): Convert liquid templates to handlebars templates. | [homepage](https://github.com/jonschlinkert/liquid-to-handlebars "Convert liquid templates to handlebars templates.")
 
 ### Contributing
 
