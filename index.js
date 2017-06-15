@@ -3,7 +3,6 @@
 var path = require('path');
 var isBinary = require('file-is-binary');
 var convert = require('gulp-liquid-to-handlebars');
-var isValid = require('is-valid-app');
 var through = require('through2');
 var vfs = require('vinyl-fs');
 var del = require('delete');
@@ -24,6 +23,7 @@ module.exports = function(app, options) {
 
   var taskName = opts.task || 'hekyll';
   var mdexts = 'markdown,mkdown,mkdn,mkd,md';
+  var overrides = themes('overrides', opts.theme);
   var themes = path.resolve.bind(path, opts.themes);
   var dest = path.resolve.bind(path, opts.dest);
   var cwd = themes(opts.theme);
@@ -108,12 +108,8 @@ module.exports = function(app, options) {
    * Custom overrides
    */
 
-  app.task('custom', function() {
-    return vfs.src('**', {
-        cwd: themes('custom', opts.theme),
-        allowEmpty: true,
-        dot: true
-      })
+  app.task('overrides', function() {
+    return vfs.src('**', {cwd: overrides, allowEmpty: true, dot: true})
       .pipe(stripEmptyMatter())
       .pipe(vfs.dest(dest()));
   });
@@ -135,7 +131,7 @@ module.exports = function(app, options) {
     'root',
     'assets',
     'text',
-    'custom',
+    'overrides',
     'delete-ruby-files'
   ]));
 
@@ -144,13 +140,11 @@ module.exports = function(app, options) {
    */
 
   function templates(taskname, folder, pattern, to, fn) {
+    var dir = path.resolve(cwd, folder);
     tasks.push(taskname);
+
     app.task(taskname, function() {
-      return vfs.src(pattern, {
-        cwd: path.resolve(cwd, folder),
-        allowEmpty: true,
-        nocase: true
-      })
+      return vfs.src(pattern, {cwd: dir, allowEmpty: true, nocase: true})
         .pipe(stripEmptyMatter())
         .pipe(convert({prefix: '@'})).on('error', console.log)
         .pipe(format()).on('error', console.log)
@@ -191,7 +185,7 @@ module.exports = function(app, options) {
   function copy(taskname, folder, pattern) {
     tasks.push(taskname);
     app.task(taskname, function() {
-      return vfs.src(pattern, {cwd: path.join(cwd, folder), allowEmpty: true })
+      return vfs.src(pattern, { cwd: path.join(cwd, folder), allowEmpty: true })
         .pipe(stripEmptyMatter())
         .pipe(vfs.dest(function(file) {
           file.extname = file.extname.replace(/liquid/, 'hbs');
@@ -256,5 +250,5 @@ function stripEmptyMatter() {
       file.contents = new Buffer(str.slice(8));
     }
     next(null, file);
-  })
+  });
 }

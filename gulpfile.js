@@ -2,8 +2,9 @@
 var gulp = require('gulp');
 var vfs = require('vinyl-fs');
 var convert = require('gulp-liquid-to-handlebars');
+var hekyll = require('./');
 
-require('./')(gulp, {
+hekyll(gulp, {
   task: 'hekyll',
   theme: 'poole',
   themes: 'vendor',
