@@ -1,199 +1,204 @@
 'use strict';
 
 var path = require('path');
+var isBinary = require('file-is-binary');
 var convert = require('gulp-liquid-to-handlebars');
 var isValid = require('is-valid-app');
 var through = require('through2');
 var vfs = require('vinyl-fs');
 var del = require('delete');
 
-module.exports = function(options) {
+module.exports = function(app, options) {
   var opts = Object.assign({themes: 'themes'}, options);
+
   if (typeof opts.dest !== 'string') {
     throw new TypeError('expected options.dest to be a string');
   }
-
-  if (typeof opts.theme !== 'string') {
-    throw new TypeError('expected options.theme to be a string');
-  }
-
   if (typeof opts.theme !== 'string') {
     throw new TypeError('expected options.theme to be a string (the name of the theme to convert)');
   }
 
-  return function(app) {
-    if (!isValid(app, 'hekyll')) return;
-    var mdexts = 'markdown,mkdown,mkdn,mkd,md';
+  /**
+   * Build variables
+   */
 
-    /**
-     * Paths
-     */
+  var taskName = opts.task || 'hekyll';
+  var mdexts = 'markdown,mkdown,mkdn,mkd,md';
+  var themes = path.resolve.bind(path, opts.themes);
+  var dest = path.resolve.bind(path, opts.dest);
+  var cwd = themes(opts.theme);
+  var tasks = [];
 
-    var taskPrefix = opts.task || 'hekyll';
-    var themes = path.resolve.bind(path, opts.themes);
-    var dest = path.resolve.bind(path, opts.dest);
-    var cwd = themes(opts.theme);
+  /**
+   * Convert liquid to handlebars
+   */
 
-    /**
-     * Convert liquid to handlebars
-     */
+  templates('layouts', '_layouts', '*.{html,liquid}', null, function(file) {
+    wrapFrame(file, ['site', 'page']);
+  });
+  templates('includes', '_includes', '*.{html,liquid}', null, function(file) {
+    wrapFrame(file, ['site', 'page']);
+  });
+  templates('drafts', '_drafts', '*.*');
+  templates('posts', '_posts', `*.{${mdexts},html,liquid}`);
+  templates('pages', '', [`*.{html,${mdexts},textile,liquid}`, '!**/{_*/**,README*,LICENSE*}'], '_pages');
 
-    templates('_layouts', '_layouts', '*.html', null, function(file) {
-      wrapFrame(file, ['site', 'page']);
-    });
-    templates('_includes', '_includes', '*.html', null, function(file) {
-      wrapFrame(file, ['site', 'page']);
-    });
-    templates('_drafts', '_drafts', '*.*');
-    templates('_posts', '_posts', `*.{${mdexts}}`);
-    templates('_pages', '', [`**/*.{html,${mdexts},textile}`, '!**/{_*/**,README*,LICENSE*}'], '_pages');
+  /**
+   * Copy files
+   */
 
-    /**
-     * Copy files
-     */
+  copy('config', '', '_config.yml');
+  copy('data', '_data', '**');
+  copy('sass', '_sass', '**');
 
-    copy('_config', '', '_config.yml');
-    copy('_data', '_data', '**');
-    copy('_sass', '_sass', '**');
+  /**
+   * Styles
+   */
 
-    /**
-     * Styles
-     */
+  app.task('styles', function() {
+    return vfs.src('styles.scss', {cwd: cwd, allowEmpty: true })
+      .pipe(stripEmptyMatter())
+      .pipe(convert({yfm: false, prefix: '@'})).on('error', console.log)
+      .pipe(addImport())
+      .pipe(vfs.dest(function(file) {
+        file.extname = file.extname.replace(/liquid/, 'hbs');
+        return dest('_sass');
+      }));
+  });
 
-    app.task(taskPrefix + '_jekyll_styles', function() {
-      return vfs.src('styles.scss', {cwd: cwd, allowEmpty: true })
-        .pipe(convert({yfm: false, prefix: '@'})).on('error', console.log)
-        .pipe(through.obj(function(file, enc, next) {
-          var str = file.contents.toString().trim();
-          file.contents = new Buffer(str + '@import "custom";\n');
-          next(null, file);
-        }))
-        .pipe(vfs.dest(dest('_sass')));
-    });
+  /**
+   * Root files
+   */
 
-    /**
-     * Root files
-     */
+  app.task('root', function() {
+    return vfs.src('**/*.{xml,txt}', {cwd: cwd, allowEmpty: true })
+      .pipe(stripEmptyMatter())
+      .pipe(convert({prefix: '@'})).on('error', console.log)
+      .pipe(vfs.dest(function(file) {
+        file.extname = file.extname.replace(/liquid/, '');
+        file.extname += '.hbs';
+        return dest();
+      }));
+  });
 
-    app.task(taskPrefix + '_jekyll_root', function() {
-      return vfs.src('**/*.{xml,txt}', {cwd: cwd, allowEmpty: true })
-        .pipe(convert({prefix: '@'})).on('error', console.log)
-        .pipe(vfs.dest(function(file) {
-          file.extname += '.hbs';
-          return dest();
-        }));
-    });
+  /**
+   * Assets
+   */
 
-    /**
-     * Assets
-     */
+  app.task('assets', function() {
+    return vfs.src('{assets,public}/**', {cwd: cwd, allowEmpty: true })
+      .pipe(vfs.dest(dest()));
+  });
 
-    app.task(taskPrefix + '_jekyll_assets', function() {
-      return vfs.src('{assets,public}/**', {cwd: cwd, allowEmpty: true })
-        .pipe(vfs.dest(dest()));
-    });
+  /**
+   * Everything else
+   */
 
-    /**
-     * Everything else
-     */
+  app.task('text', function() {
+    return vfs.src([
+      '**/*',
+      `!**/{_*,assets,public,*.{liquid,html,txt,xml,${mdexts},scss}}`,
+      '{LICENSE*,README*}'
+    ], { cwd: cwd, allowEmpty: true })
+      .pipe(stripEmptyMatter())
+      .pipe(vfs.dest(dest()));
+  });
 
-    app.task(taskPrefix + '_jekyll_text', function() {
-      return vfs.src([
-        '**/*',
-        `!**/{_*,assets,public,*.{html,txt,xml,${mdexts},scss}}`,
-        '{LICENSE*,README*}'
-      ], { cwd: cwd, allowEmpty: true })
-        .pipe(vfs.dest(dest()));
-    });
+  /**
+   * Custom overrides
+   */
 
-    /**
-     * Custom overrides
-     */
-
-    app.task(taskPrefix + '_custom', function() {
-      return vfs.src('**', {
+  app.task('custom', function() {
+    return vfs.src('**', {
         cwd: themes('custom', opts.theme),
         allowEmpty: true,
         dot: true
       })
-        .pipe(vfs.dest(dest()));
+      .pipe(stripEmptyMatter())
+      .pipe(vfs.dest(dest()));
+  });
+
+  /**
+   * Cleanup
+   */
+
+  app.task('delete-ruby-files', function() {
+    return del(['**/{*.,}gem*', 'script/'], {cwd: dest(), nocase: true});
+  });
+
+  /**
+   * Run all "jekyll" tasks
+   */
+
+  app.task(taskName, tasks.concat([
+    'styles',
+    'root',
+    'assets',
+    'text',
+    'custom',
+    'delete-ruby-files'
+  ]));
+
+  /**
+   * Create a task for converting templates
+   */
+
+  function templates(taskname, folder, pattern, to, fn) {
+    tasks.push(taskname);
+    app.task(taskname, function() {
+      return vfs.src(pattern, {
+        cwd: path.resolve(cwd, folder),
+        allowEmpty: true,
+        nocase: true
+      })
+        .pipe(stripEmptyMatter())
+        .pipe(convert({prefix: '@'})).on('error', console.log)
+        .pipe(format()).on('error', console.log)
+        .pipe(through.obj(function(file, enc, next) {
+          if (fn) fn(file);
+          next(null, file);
+        }))
+        .pipe(through.obj(function(file, enc, next) {
+          var str = file.contents.toString();
+          str = str.replace(/\r\n/g, '\n');
+          file.contents = new Buffer(str);
+          next(null, file);
+        }))
+        .pipe(vfs.dest(function(file) {
+          var ext = file.extname;
+          switch (ext) {
+            case '.html':
+              file.extname = '.hbs';
+              break;
+            case '.markdown':
+            case '.mkdown':
+            case '.mkdn':
+            case '.mkd':
+            case '.md':
+              file.extname = '.md';
+              break;
+            case '.yaml':
+              file.extname = '.yml';
+              break;
+          }
+
+          file.extname = file.extname.replace(/liquid/, 'hbs');
+          return dest(to || folder);
+        }));
     });
+  }
 
-    /**
-     * Cleanup
-     */
-
-    app.task(taskPrefix + '_delete', function() {
-      return del(dest());
+  function copy(taskname, folder, pattern) {
+    tasks.push(taskname);
+    app.task(taskname, function() {
+      return vfs.src(pattern, {cwd: path.join(cwd, folder), allowEmpty: true })
+        .pipe(stripEmptyMatter())
+        .pipe(vfs.dest(function(file) {
+          file.extname = file.extname.replace(/liquid/, 'hbs');
+          return dest(folder);
+        }));
     });
-
-    app.task(taskPrefix + '_delete-ruby-files', function() {
-      return del(['**/{*.,}gem*', 'script/'], {cwd: dest(), nocase: true});
-    });
-
-    /**
-     * Run all "jekyll" tasks
-     */
-
-    app.task(taskPrefix, [
-      taskPrefix + '_delete',
-      taskPrefix + '_jekyll_*',
-      taskPrefix + '_custom',
-      taskPrefix + '_delete-ruby-files'
-    ]);
-
-    /**
-     * Create a task for converting templates
-     */
-
-    function templates(taskname, folder, pattern, to, fn) {
-      app.task(taskPrefix + `_jekyll${taskname}`, function() {
-        return vfs.src(pattern, {
-          cwd: path.join(cwd, folder),
-          allowEmpty: true,
-          nocase: true
-        })
-          .pipe(convert({prefix: '@'})).on('error', console.log)
-          .pipe(format()).on('error', console.log)
-          .pipe(through.obj(function(file, enc, next) {
-            if (fn) fn(file);
-            next(null, file);
-          }))
-          .pipe(through.obj(function(file, enc, next) {
-            var str = file.contents.toString();
-            str = str.replace(/\r\n/g, '\n');
-            file.contents = new Buffer(str);
-            next(null, file);
-          }))
-          .pipe(vfs.dest(function(file) {
-            var ext = file.extname;
-            switch (ext) {
-              case '.html':
-                file.extname = '.hbs';
-                break;
-              case '.markdown':
-              case '.mkdown':
-              case '.mkdn':
-              case '.mkd':
-              case '.md':
-                file.extname = '.md';
-                break;
-              case '.yaml':
-                file.extname = '.yml';
-                break;
-            }
-            return dest(to || folder);
-          }));
-      });
-    }
-
-    function copy(taskname, folder, pattern) {
-      app.task(taskPrefix + `_jekyll${taskname}`, function() {
-        return vfs.src(pattern, {cwd: path.join(cwd, folder), allowEmpty: true })
-          .pipe(vfs.dest(dest(folder)));
-      });
-    }
-  };
+  }
 };
 
 function wrapFrame(file, props) {
@@ -202,7 +207,7 @@ function wrapFrame(file, props) {
     var hash = props.map(function(prop) {
       return prop + '=' + prop;
     });
-    str = `{{#frame ${hash.join(' ')}}}\n` + str + '{{/frame}}\n';
+    str = `{{#frame ${hash.join(' ')}}}\n` + str.trim() + '\n{{/frame}}\n';
     file.contents = new Buffer(str);
   }
 }
@@ -224,4 +229,32 @@ function format() {
     file.contents = new Buffer(str);
     next(null, file);
   });
+}
+
+function addImport() {
+  return through.obj(function(file, enc, next) {
+    var str = file.contents.toString().trim();
+    file.contents = new Buffer(str + '@import "custom";\n');
+    next(null, file);
+  });
+}
+
+function stripEmptyMatter() {
+  return through.obj(function(file, enc, next) {
+    if (typeof file.isBinary !== 'function') {
+      file.isBinary = function() {
+        return isBinary(file);
+      };
+    }
+
+    if (isBinary(file) || file.isNull()) {
+      next(null, file);
+      return;
+    }
+    var str = file.contents.toString();
+    if (str.slice(0, 8) === '---\n---\n') {
+      file.contents = new Buffer(str.slice(8));
+    }
+    next(null, file);
+  })
 }
