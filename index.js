@@ -23,8 +23,8 @@ module.exports = function(app, options) {
 
   var taskName = opts.task || 'hekyll';
   var mdexts = 'markdown,mkdown,mkdn,mkd,md';
-  var overrides = themes('overrides', opts.theme);
   var themes = path.resolve.bind(path, opts.themes);
+  var overrides = themes('overrides', opts.theme);
   var dest = path.resolve.bind(path, opts.dest);
   var cwd = themes(opts.theme);
   var tasks = [];
