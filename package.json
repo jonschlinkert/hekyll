@@ -20,16 +20,17 @@
     "test": "mocha"
   },
   "dependencies": {
-    "delete": "^1.0.1",
+    "assemble-core": "^0.31.0",
+    "delete": "^1.1.0",
     "file-is-binary": "^1.0.0",
     "gulp-liquid-to-handlebars": "^1.0.1",
+    "plugin-error": "^0.1.2",
     "through2": "^2.0.3",
     "vinyl-fs": "^2.4.4"
   },
   "devDependencies": {
-    "gulp": "^3.9.1",
-    "gulp-format-md": "^0.1.12",
-    "mocha": "^3.4.2"
+    "mocha": "^3.4.2",
+    "gulp-format-md": "^1.0.0"
   },
   "keywords": [
     "assemble",

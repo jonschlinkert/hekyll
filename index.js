@@ -1,47 +1,72 @@
 'use strict';
 
 var path = require('path');
+var Assemble = require('assemble-core');
 var isBinary = require('file-is-binary');
+var PluginError = require('plugin-error');
 var convert = require('gulp-liquid-to-handlebars');
 var through = require('through2');
 var vfs = require('vinyl-fs');
 var del = require('delete');
 
-module.exports = function(app, options) {
-  var opts = Object.assign({themes: 'themes'}, options);
+module.exports = function(options) {
+  var opts = Object.assign({}, options);
 
-  if (typeof opts.dest !== 'string') {
-    throw new TypeError('expected options.dest to be a string');
+  if (typeof opts.src !== 'string') {
+    return Promise.reject(new TypeError('expected options.src to be a string'));
   }
-  if (typeof opts.theme !== 'string') {
-    throw new TypeError('expected options.theme to be a string (the name of the theme to convert)');
+  if (typeof opts.dest !== 'string') {
+    return Promise.reject(new TypeError('expected options.dest to be a string'));
   }
 
   /**
    * Build variables
    */
 
-  var taskName = opts.task || 'hekyll';
+  var app = new Assemble(opts);
   var mdexts = 'markdown,mkdown,mkdn,mkd,md';
-  var themes = path.resolve.bind(path, opts.themes);
-  var overrides = themes('overrides', opts.theme);
+  var src = path.resolve.bind(path, opts.src);
   var dest = path.resolve.bind(path, opts.dest);
-  var cwd = themes(opts.theme);
+  var overrides = src('overrides');
+  var cwd = src();
   var tasks = [];
 
   /**
    * Convert liquid to handlebars
    */
 
-  templates('layouts', '_layouts', '*.{html,liquid}', null, function(file) {
-    wrapFrame(file, ['site', 'page']);
+  app.task('templates', function() {
+    var patterns = [
+      `{,_*/**/}*.{html,${mdexts},textile,liquid}`,
+      '!**/{README*,LICENSE*,CONTRIBUTING*}'
+    ];
+
+    return vfs.src(patterns, {cwd: cwd, allowEmpty: true, dot: true})
+      .pipe(normalizeNewlines())
+      .pipe(stripEmptyMatter())
+      .pipe(convert({prefix: '@'}))
+      .pipe(format())
+      .pipe(wrapFrame(['page', 'site']))
+      .pipe(vfs.dest(function(file) {
+        switch (file.extname) {
+          case '.html':
+            file.extname = '.hbs';
+            break;
+          case '.markdown':
+          case '.mkdown':
+          case '.mkdn':
+          case '.mkd':
+          case '.md':
+            file.extname = '.md';
+            break;
+          case '.yaml':
+            file.extname = '.yml';
+            break;
+        }
+        file.extname = file.extname.replace(/liquid/, 'hbs');
+        return dest();
+      }));
   });
-  templates('includes', '_includes', '*.{html,liquid}', null, function(file) {
-    wrapFrame(file, ['site', 'page']);
-  });
-  templates('drafts', '_drafts', '*.*');
-  templates('posts', '_posts', `*.{${mdexts},html,liquid}`);
-  templates('pages', '', [`*.{html,${mdexts},textile,liquid}`, '!**/{_*/**,README*,LICENSE*}'], '_pages');
 
   /**
    * Copy files
@@ -56,9 +81,9 @@ module.exports = function(app, options) {
    */
 
   app.task('styles', function() {
-    return vfs.src('styles.scss', {cwd: cwd, allowEmpty: true })
+    return vfs.src('styles.scss', {cwd: cwd, allowEmpty: true, dot: true })
       .pipe(stripEmptyMatter())
-      .pipe(convert({yfm: false, prefix: '@'})).on('error', console.log)
+      .pipe(convert({yfm: false, prefix: '@'}))
       .pipe(addImport())
       .pipe(vfs.dest(function(file) {
         file.extname = file.extname.replace(/liquid/, 'hbs');
@@ -71,9 +96,9 @@ module.exports = function(app, options) {
    */
 
   app.task('root', function() {
-    return vfs.src('**/*.{xml,txt}', {cwd: cwd, allowEmpty: true })
+    return vfs.src('**/*.{xml,txt}', {cwd: cwd, allowEmpty: true, dot: true })
       .pipe(stripEmptyMatter())
-      .pipe(convert({prefix: '@'})).on('error', console.log)
+      .pipe(convert({prefix: '@'}))
       .pipe(vfs.dest(function(file) {
         file.extname = file.extname.replace(/liquid/, '');
         file.extname += '.hbs';
@@ -86,7 +111,7 @@ module.exports = function(app, options) {
    */
 
   app.task('assets', function() {
-    return vfs.src('{assets,public}/**', {cwd: cwd, allowEmpty: true })
+    return vfs.src('{assets,public}/**', {cwd: cwd, allowEmpty: true, dot: true })
       .pipe(vfs.dest(dest()));
   });
 
@@ -126,7 +151,8 @@ module.exports = function(app, options) {
    * Run all "jekyll" tasks
    */
 
-  app.task(taskName, tasks.concat([
+  app.task('hekyll', tasks.concat([
+    'templates',
     'styles',
     'root',
     'assets',
@@ -136,56 +162,15 @@ module.exports = function(app, options) {
   ]));
 
   /**
-   * Create a task for converting templates
+   * Create tasks for copying files
    */
 
-  function templates(taskname, folder, pattern, to, fn) {
-    var dir = path.resolve(cwd, folder);
-    tasks.push(taskname);
-
-    app.task(taskname, function() {
-      return vfs.src(pattern, {cwd: dir, allowEmpty: true, nocase: true})
-        .pipe(stripEmptyMatter())
-        .pipe(convert({prefix: '@'})).on('error', console.log)
-        .pipe(format()).on('error', console.log)
-        .pipe(through.obj(function(file, enc, next) {
-          if (fn) fn(file);
-          next(null, file);
-        }))
-        .pipe(through.obj(function(file, enc, next) {
-          var str = file.contents.toString();
-          str = str.replace(/\r\n/g, '\n');
-          file.contents = new Buffer(str);
-          next(null, file);
-        }))
-        .pipe(vfs.dest(function(file) {
-          var ext = file.extname;
-          switch (ext) {
-            case '.html':
-              file.extname = '.hbs';
-              break;
-            case '.markdown':
-            case '.mkdown':
-            case '.mkdn':
-            case '.mkd':
-            case '.md':
-              file.extname = '.md';
-              break;
-            case '.yaml':
-              file.extname = '.yml';
-              break;
-          }
-
-          file.extname = file.extname.replace(/liquid/, 'hbs');
-          return dest(to || folder);
-        }));
-    });
-  }
-
-  function copy(taskname, folder, pattern) {
-    tasks.push(taskname);
-    app.task(taskname, function() {
-      return vfs.src(pattern, { cwd: path.join(cwd, folder), allowEmpty: true })
+  function copy(name, folder, pattern) {
+    var dir = path.join(cwd, folder);
+    var key = 'copy-' + name;
+    tasks.push(key);
+    app.task(key, function() {
+      return vfs.src(pattern, { cwd: dir, allowEmpty: true, dot: true })
         .pipe(stripEmptyMatter())
         .pipe(vfs.dest(function(file) {
           file.extname = file.extname.replace(/liquid/, 'hbs');
@@ -193,26 +178,34 @@ module.exports = function(app, options) {
         }));
     });
   }
+
+  return new Promise(function(resolve, reject) {
+    app.build('hekyll', function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  });
 };
 
-function wrapFrame(file, props) {
-  var str = file.contents.toString();
-  if (str.slice(0, 3) !== '---') {
-    var hash = props.map(function(prop) {
-      return prop + '=' + prop;
-    });
-    str = `{{#frame ${hash.join(' ')}}}\n` + str.trim() + '\n{{/frame}}\n';
-    file.contents = new Buffer(str);
-  }
+function wrapFrame(props) {
+  return plugin(function(file, next) {
+    var str = file.contents.toString();
+    if (str.slice(0, 3) !== '---') {
+      var hash = props.map(function(prop) {
+        return prop + '=' + prop;
+      });
+      str = `{{#frame ${hash.join(' ')}}}\n` + str.trim() + '\n{{/frame}}\n';
+      file.contents = new Buffer(str);
+    }
+    next(null, file);
+  });
 }
 
 function format() {
-  return through.obj(function(file, enc, next) {
-    if (file.isNull()) {
-      next();
-      return;
-    }
-
+  return plugin(function(file, next) {
     var str = file.contents.toString();
 
     // fix main `styles.css` path
@@ -225,8 +218,17 @@ function format() {
   });
 }
 
+function normalizeNewlines() {
+  return plugin(function(file, next) {
+    var str = file.contents.toString();
+    str = str.replace(/\r\n/g, '\n');
+    file.contents = new Buffer(str);
+    next(null, file);
+  });
+}
+
 function addImport() {
-  return through.obj(function(file, enc, next) {
+  return plugin(function(file, next) {
     var str = file.contents.toString().trim();
     file.contents = new Buffer(str + '@import "custom";\n');
     next(null, file);
@@ -234,21 +236,26 @@ function addImport() {
 }
 
 function stripEmptyMatter() {
-  return through.obj(function(file, enc, next) {
-    if (typeof file.isBinary !== 'function') {
-      file.isBinary = function() {
-        return isBinary(file);
-      };
-    }
-
-    if (isBinary(file) || file.isNull()) {
-      next(null, file);
-      return;
-    }
+  return plugin(function(file, next) {
     var str = file.contents.toString();
     if (str.slice(0, 8) === '---\n---\n') {
       file.contents = new Buffer(str.slice(8));
     }
     next(null, file);
+  });
+}
+
+function plugin(fn) {
+  return through.obj(function(file, enc, next) {
+    try {
+      if (isBinary(file) || file.isNull()) {
+        next(null, file);
+        return;
+      }
+      fn(file, next);
+    } catch (err) {
+      this.emit('error', new PluginError('hekyll', err, {showStack: true}));
+      next(err);
+    }
   });
 }
