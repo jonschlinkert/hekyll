@@ -168,6 +168,7 @@ Hekyll.prototype.text = function(options, dest) {
     `!**/{_*,assets,public,*.{html,liquid,${MDEXTS},scss,txt,xml}}`,
     '!**/{*.,}gem*',
     '!**/script{,/**}',
+    '!**/.git{,/**}',
     '{LICENSE*,README*}'
   ];
 
