@@ -2,6 +2,8 @@
 
 > Migrate Jekyll (gh-pages) themes to use handlebars instead of liquid.
 
+Follow this project's author, [Jon Schlinkert](https://github.com/jonschlinkert), for updates on this project and others.
+
 ## Install
 
 Install with [npm](https://www.npmjs.com/):
@@ -12,26 +14,166 @@ $ npm install --save hekyll
 
 ## Usage
 
-The main function expects an options object with `src` and `dest` properties, and returns a promise.
+### Quickstart
 
-```js
-var hekyll = require('hekyll');
-hekyll(options);
-```
+The easiest way to use hekyll is to call the static `.build` method with an options object.
 
-**Options**
+**Required options**
 
-* `src`: the directory with source files for a Jekyll theme.
-* `dest`: the destination path for the converted theme.
+At minimum, you will need to define the following:
+
+* `options.cwd` - the source directory with the jekyll theme to convert
+* `options.destBase` - the base destination directory to write the converted or copied files to.
 
 **Example**
 
 ```js
-hekyll({src: 'themes/poole', dest: 'src'})
+var Hekyll = require('hekyll');
+
+Hekyll.build({cwd: 'jekyll_theme_folder', destBase: 'output_folder'})
   .then(function() {
-    console.log('finished!');
+    console.log('converted!');
   })
   .catch(console.error);
+```
+
+### Custom
+
+The main export is a constructor function that takes an options object. Once an instance is created, you can use hekyll's methods to convert and copy files however you want. See [the API documentation](#api) for more details.
+
+**Example**
+
+```js
+var Hekyll = require('hekyll');
+var hekyll = new Hekyll({
+  cwd: 'jekyll_theme_folder',
+  destBase: 'output_folder'
+});
+
+function dest(dir) {
+  return function(file) {
+    return dir || '';
+  };
+}
+
+hekyll.templates([
+  `{,_*/**/}*.{html,markdown,mdown,mkdown,mkdn,mkd,md,textile,liquid}`,
+  '!**/{README*,LICENSE*,CONTRIBUTING*}'
+], dest())
+  .then(hekyll.assets('{assets,public}/**', dest()))
+  .then(hekyll.copy('_config.yml', dest()))
+  .then(hekyll.copy('_data/**', dest('_data')))
+  .then(hekyll.copy('_sass/**', dest('_sass')))
+  .then(hekyll.copy('styles.scss', {addImport: 'custom'}, dest('_sass')))
+  .then(hekyll.copy('**/*.{xml,txt}', function(file) {
+    file.extname += '.hbs';
+    return '';
+  }))
+  .then(hekyll.text(dest()))
+  .then(function() {
+    console.log('done!');
+  })
+  .catch(console.error)
+```
+
+**Required Options**
+
+* `cwd`: the directory with source files for a Jekyll theme.
+* `destBase`: the base destination directory for the converted theme.
+
+## API
+
+### [Hekyll](index.js#L20)
+
+Create an instance of `Hekyll` with the given `options`.
+
+**Params**
+
+* `options` **{Object}**
+
+**Example**
+
+```js
+var Hekyll = require('hekyll');
+var hekyll = new Hekyll();
+```
+
+### [.templates](index.js#L42)
+
+Copies and converts liquid templates to handlebars templates using the given glob `patterns`, `options` and `dest` function.
+
+**Params**
+
+* `patterns` **{String|Array}**
+* `options` **{Object}**
+* `dest` **{Function}**: Must return a string.
+* `returns` **{Promise}**
+
+**Example**
+
+```js
+hekyll.templates(patterns, {destBase: 'foo'}, function(file) {
+  // optionally do stuff to vinyl "file" object
+  // the returned folder is joined to `options.destBase`
+  return 'folder_name';
+});
+```
+
+### [.copy](index.js#L98)
+
+Copies files using the given glob `patterns`, `options` and `dest` function. Converts liquid templates and strips front matter from files.
+
+**Params**
+
+* `patterns` **{String|Array}**
+* `options` **{Object}**
+* `dest` **{Function}**: Must return a string.
+* `returns` **{Promise}**
+
+**Example**
+
+```js
+hekyll.copy(patterns, {destBase: 'foo'}, function(file) {
+  return '';
+});
+```
+
+### [.assets](index.js#L134)
+
+Copies assets files using the given glob `patterns`, `options` and `dest` function. Does not read the files or modify file contents in any way.
+
+**Params**
+
+* `patterns` **{String|Array}**
+* `options` **{Object}**
+* `dest` **{Function}**: Must return a string.
+* `returns` **{Promise}**
+
+**Example**
+
+```js
+hekyll.assets(patterns, {destBase: 'foo'}, function(file) {
+  return '';
+});
+```
+
+### [.text](index.js#L162)
+
+Copies plain text files using the given glob `patterns`, `options` and `dest` function. Strips front-matter, but does not attempt to convert templates.
+
+**Params**
+
+* `patterns` **{String|Array}**
+* `options` **{Object}**
+* `dest` **{Function}**: Must return a string.
+* `returns` **{Promise}**
+
+**Example**
+
+```js
+hekyll.text(patterns, {destBase: 'foo'}, function(file) {
+  return '';
+});
 ```
 
 ## Choosing a theme
@@ -50,18 +192,6 @@ Here are some libraries that might be useful for this:
 **Bug reports**
 
 If you find a bug or something that doesn't convert correctly, [please let me know](../../issues/new), I want this to work as seamlessly as possible.
-
-## Release history
-
-### v2.0.0
-
-**Breaking changes**
-
-Refactored to simplify. See [Usage](#usage) section for new API.
-
-### v1.0.0
-
-First release.
 
 ## About
 
@@ -111,4 +241,4 @@ Released under the [MIT License](LICENSE).
 
 ***
 
-_This file was generated by [verb-generate-readme](https://github.com/verbose/verb-generate-readme), v0.6.0, on August 12, 2017._
+_This file was generated by [verb-generate-readme](https://github.com/verbose/verb-generate-readme), v0.6.0, on September 21, 2017._
