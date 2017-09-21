@@ -16,7 +16,7 @@ describe('hekyll', function() {
   });
 
   it('should throw an error when invalid args are passed', function(cb) {
-    hekyll()
+    hekyll.build()
       .catch(function(err) {
         assert(err);
         cb();
@@ -24,7 +24,7 @@ describe('hekyll', function() {
   });
 
   it('should convert a theme to handlebars', function() {
-    return hekyll({src: fixtures(), dest: actual()})
+    return hekyll.build({cwd: fixtures(), destBase: actual()})
       .then(function() {
         assert(fs.existsSync(actual()))
         assert(fs.existsSync(actual('atom.xml.hbs')))

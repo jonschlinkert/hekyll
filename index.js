@@ -1,55 +1,64 @@
 'use strict';
 
-var path = require('path');
-var Assemble = require('assemble-core');
-var isBinary = require('file-is-binary');
-var PluginError = require('plugin-error');
-var convert = require('gulp-liquid-to-handlebars');
-var through = require('through2');
-var vfs = require('vinyl-fs');
-var del = require('delete');
+const vfs = require('vinyl-fs');
+const convert = require('gulp-liquid-to-handlebars');
+const plugin = require('./lib/plugins');
+const utils = require('./lib/utils');
+const MDEXTS = 'markdown,mkdown,mdown,mkdn,mkd,md';
 
-module.exports = function(options) {
-  var opts = Object.assign({}, options);
+/**
+ * Create an instance of `Hekyll` with the given `options`.
+ *
+ * ```js
+ * var Hekyll = require('hekyll');
+ * var hekyll = new Hekyll();
+ * ```
+ * @param {Object} `options`
+ * @api public
+ */
 
-  if (typeof opts.src !== 'string') {
-    return Promise.reject(new TypeError('expected options.src to be a string'));
-  }
-  if (typeof opts.dest !== 'string') {
-    return Promise.reject(new TypeError('expected options.dest to be a string'));
-  }
+function Hekyll(options) {
+  this.options = Object.assign({}, options);
+}
 
-  /**
-   * Build variables
-   */
+/**
+ * Copies and converts liquid templates to handlebars templates
+ * using the given glob `patterns`, `options` and `dest` function.
+ *
+ * ```js
+ * hekyll.templates(patterns, {destBase: 'foo'}, function(file) {
+ *   // optionally do stuff to vinyl "file" object
+ *   // the returned folder is joined to `options.destBase`
+ *   return 'folder_name';
+ * });
+ * ```
+ * @param {String|Array} `patterns`
+ * @param {Object} `options`
+ * @param {Function} `dest` Must return a string.
+ * @return {Promise}
+ * @api public
+ */
 
-  var app = new Assemble(opts);
-  var mdexts = 'markdown,mkdown,mkdn,mkd,md';
-  var src = path.resolve.bind(path, opts.src);
-  var dest = path.resolve.bind(path, opts.dest);
-  var overrides = src('overrides');
-  var cwd = src();
-  var tasks = [];
+Hekyll.prototype.templates = function(patterns, options, dest) {
+  const opts = utils.toOptions(this, options, dest);
+  if (utils.isPromise(opts)) return opts;
 
-  /**
-   * Convert liquid to handlebars
-   */
-
-  app.task('templates', function() {
-    var patterns = [
-      `{,_*/**/}*.{html,${mdexts},textile,liquid}`,
-      '!**/{README*,LICENSE*,CONTRIBUTING*}'
-    ];
-
-    return vfs.src(patterns, {cwd: cwd, allowEmpty: true, dot: true})
-      .pipe(normalizeNewlines())
-      .pipe(stripEmptyMatter())
+  return new Promise(function(resolve, reject) {
+    vfs.src(patterns, opts)
+      .pipe(plugin.normalizeNewlines())
+      .on('error', reject)
+      .pipe(plugin.stripEmptyMatter())
+      .on('error', reject)
       .pipe(convert({prefix: '@'}))
-      .pipe(format())
-      .pipe(wrapFrame(['page', 'site']))
+      .on('error', reject)
+      .pipe(plugin.format())
+      .on('error', reject)
+      .pipe(plugin.wrapFrame(['page', 'site']))
+      .on('error', reject)
       .pipe(vfs.dest(function(file) {
         switch (file.extname) {
           case '.html':
+          case '.liquid':
             file.extname = '.hbs';
             break;
           case '.markdown':
@@ -63,199 +72,147 @@ module.exports = function(options) {
             file.extname = '.yml';
             break;
         }
-        file.extname = file.extname.replace(/liquid/, 'hbs');
-        return dest();
-      }));
-  });
-
-  /**
-   * Copy files
-   */
-
-  copy('config', '', '_config.yml');
-  copy('data', '_data', '**');
-  copy('sass', '_sass', '**');
-
-  /**
-   * Styles
-   */
-
-  app.task('styles', function() {
-    return vfs.src('styles.scss', {cwd: cwd, allowEmpty: true, dot: true })
-      .pipe(stripEmptyMatter())
-      .pipe(convert({yfm: false, prefix: '@'}))
-      .pipe(addImport())
-      .pipe(vfs.dest(function(file) {
-        file.extname = file.extname.replace(/liquid/, 'hbs');
-        return dest('_sass');
-      }));
-  });
-
-  /**
-   * Root files
-   */
-
-  app.task('root', function() {
-    return vfs.src('**/*.{xml,txt}', {cwd: cwd, allowEmpty: true, dot: true })
-      .pipe(stripEmptyMatter())
-      .pipe(convert({prefix: '@'}))
-      .pipe(vfs.dest(function(file) {
-        file.extname = file.extname.replace(/liquid/, '');
-        file.extname += '.hbs';
-        return dest();
-      }));
-  });
-
-  /**
-   * Assets
-   */
-
-  app.task('assets', function() {
-    return vfs.src('{assets,public}/**', {cwd: cwd, allowEmpty: true, dot: true })
-      .pipe(vfs.dest(dest()));
-  });
-
-  /**
-   * Everything else
-   */
-
-  app.task('text', function() {
-    return vfs.src([
-      '**/*',
-      `!**/{_*,assets,public,*.{liquid,html,txt,xml,${mdexts},scss}}`,
-      '{LICENSE*,README*}'
-    ], { cwd: cwd, allowEmpty: true })
-      .pipe(stripEmptyMatter())
-      .pipe(vfs.dest(dest()));
-  });
-
-  /**
-   * Custom overrides
-   */
-
-  app.task('overrides', function() {
-    return vfs.src('**', {cwd: overrides, allowEmpty: true, dot: true})
-      .pipe(stripEmptyMatter())
-      .pipe(vfs.dest(dest()));
-  });
-
-  /**
-   * Cleanup
-   */
-
-  app.task('delete-ruby-files', function() {
-    return del(['**/{*.,}gem*', 'script/'], {cwd: dest(), nocase: true});
-  });
-
-  /**
-   * Run all "jekyll" tasks
-   */
-
-  app.task('hekyll', tasks.concat([
-    'templates',
-    'styles',
-    'root',
-    'assets',
-    'text',
-    'overrides',
-    'delete-ruby-files'
-  ]));
-
-  /**
-   * Create tasks for copying files
-   */
-
-  function copy(name, folder, pattern) {
-    var dir = path.join(cwd, folder);
-    var key = 'copy-' + name;
-    tasks.push(key);
-    app.task(key, function() {
-      return vfs.src(pattern, { cwd: dir, allowEmpty: true, dot: true })
-        .pipe(stripEmptyMatter())
-        .pipe(vfs.dest(function(file) {
-          file.extname = file.extname.replace(/liquid/, 'hbs');
-          return dest(folder);
-        }));
-    });
-  }
-
-  return new Promise(function(resolve, reject) {
-    app.build('hekyll', function(err) {
-      if (err) {
-        reject(err);
-      } else {
-        resolve();
-      }
-    });
+        return utils.toDest(opts)(file);
+      }))
+      .on('error', reject)
+      .on('end', resolve);
   });
 };
 
-function wrapFrame(props) {
-  return plugin(function(file, next) {
-    var str = file.contents.toString();
-    if (str.slice(0, 3) !== '---') {
-      var hash = props.map(function(prop) {
-        return prop + '=' + prop;
-      });
-      str = `{{#frame ${hash.join(' ')}}}\n` + str.trim() + '\n{{/frame}}\n';
-      file.contents = new Buffer(str);
-    }
-    next(null, file);
+/**
+ * Copies files using the given glob `patterns`, `options` and `dest`
+ * function. Converts liquid templates and strips front matter from files.
+ *
+ * ```js
+ * hekyll.copy(patterns, {destBase: 'foo'}, function(file) {
+ *   return '';
+ * });
+ * ```
+ * @param {String|Array} `patterns`
+ * @param {Object} `options`
+ * @param {Function} `dest` Must return a string.
+ * @return {Promise}
+ * @api public
+ */
+
+Hekyll.prototype.copy = function(patterns, options, dest) {
+  const opts = utils.toOptions(this, options, dest);
+  if (utils.isPromise(opts)) return opts;
+
+  return new Promise(function(resolve, reject) {
+    vfs.src(patterns, opts)
+      .pipe(plugin.stripEmptyMatter())
+      .on('error', reject)
+      .pipe(convert({yfm: false, prefix: '@'}))
+      .on('error', reject)
+      .pipe(plugin.addImport(opts))
+      .on('error', reject)
+      .pipe(plugin.trim())
+      .on('error', reject)
+      .pipe(vfs.dest(utils.toDest(opts)))
+      .on('error', reject)
+      .on('end', resolve);
   });
-}
+};
 
-function format() {
-  return plugin(function(file, next) {
-    var str = file.contents.toString();
+/**
+ * Copies assets files using the given glob `patterns`, `options` and `dest`
+ * function. Does not read the files or modify file contents in any way.
+ *
+ * ```js
+ * hekyll.assets(patterns, {destBase: 'foo'}, function(file) {
+ *   return '';
+ * });
+ * ```
+ * @param {String|Array} `patterns`
+ * @param {Object} `options`
+ * @param {Function} `dest` Must return a string.
+ * @return {Promise}
+ * @api public
+ */
 
-    // fix main `styles.css` path
-    str = str.replace(/\/(?=styles\.css)/, '/assets/css/');
+Hekyll.prototype.assets = function(patterns, options, dest) {
+  const opts = utils.toOptions(this, options, dest);
+  if (utils.isPromise(opts)) return opts;
 
-    // strip leading indentation before {{markdown}} tags
-    str = str.replace(/^\s+(\{\{(\/|#)?(?:markdown|md))/gm, '$1');
-    file.contents = new Buffer(str);
-    next(null, file);
+  return new Promise(function(resolve, reject) {
+    vfs.src(patterns, opts)
+      .pipe(vfs.dest(utils.toDest(opts)))
+      .on('error', reject)
+      .on('end', resolve);
   });
-}
+};
 
-function normalizeNewlines() {
-  return plugin(function(file, next) {
-    var str = file.contents.toString();
-    str = str.replace(/\r\n/g, '\n');
-    file.contents = new Buffer(str);
-    next(null, file);
-  });
-}
+/**
+ * Copies plain text files using the given glob `patterns`, `options` and `dest`
+ * function. Strips front-matter, but does not attempt to convert templates.
+ *
+ * ```js
+ * hekyll.text(patterns, {destBase: 'foo'}, function(file) {
+ *   return '';
+ * });
+ * ```
+ * @param {String|Array} `patterns`
+ * @param {Object} `options`
+ * @param {Function} `dest` Must return a string.
+ * @return {Promise}
+ * @api public
+ */
 
-function addImport() {
-  return plugin(function(file, next) {
-    var str = file.contents.toString().trim();
-    file.contents = new Buffer(str + '@import "custom";\n');
-    next(null, file);
-  });
-}
+Hekyll.prototype.text = function(options, dest) {
+  const opts = utils.toOptions(this, options, dest);
+  if (utils.isPromise(opts)) return opts;
 
-function stripEmptyMatter() {
-  return plugin(function(file, next) {
-    var str = file.contents.toString();
-    if (str.slice(0, 8) === '---\n---\n') {
-      file.contents = new Buffer(str.slice(8));
-    }
-    next(null, file);
-  });
-}
+  const patterns = opts.patterns || [
+    '**/*',
+    `!**/{_*,assets,public,*.{html,liquid,${MDEXTS},scss,txt,xml}}`,
+    '!**/{*.,}gem*',
+    '!**/script{,/**}',
+    '{LICENSE*,README*}'
+  ];
 
-function plugin(fn) {
-  return through.obj(function(file, enc, next) {
-    try {
-      if (isBinary(file) || file.isNull()) {
-        next(null, file);
-        return;
-      }
-      fn(file, next);
-    } catch (err) {
-      this.emit('error', new PluginError('hekyll', err, {showStack: true}));
-      next(err);
-    }
+  return new Promise(function(resolve, reject) {
+    vfs.src(patterns, opts)
+      .pipe(plugin.stripEmptyMatter())
+      .on('error', reject)
+      .pipe(vfs.dest(utils.toDest(opts)))
+      .on('error', reject)
+      .on('end', resolve);
   });
-}
+};
+
+Hekyll.build = function(options) {
+  if (!options) {
+    return Promise.reject('expected options to be an object');
+  }
+
+  const hekyll = new Hekyll(options);
+  const patterns = hekyll.options.patterns || [
+    `{,_*/**/}*.{html,liquid,${MDEXTS},textile}`,
+    '!**/{README*,LICENSE*,CONTRIBUTING*}'
+  ];
+
+  function dest(dir) {
+    return function(file) {
+      return dir || '';
+    };
+  }
+
+  return hekyll.templates(patterns, dest())
+    .then(hekyll.assets('{assets,public}/**', dest()))
+    .then(hekyll.copy('_config.yml', dest()))
+    .then(hekyll.copy('_data/**', dest('_data')))
+    .then(hekyll.copy('_sass/**', dest('_sass')))
+    .then(hekyll.copy('styles.scss', {addImport: 'custom'}, dest('_sass')))
+    .then(hekyll.copy('**/*.{xml,txt}', function(file) {
+      file.extname += '.hbs';
+      return '';
+    }))
+    .then(hekyll.text(dest()));
+};
+
+/**
+ * Expose `Hekyll`
+ */
+
+module.exports = Hekyll;
