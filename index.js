@@ -1,10 +1,10 @@
 'use strict';
 
+const path = require('path');
 const vfs = require('vinyl-fs');
-const convert = require('gulp-liquid-to-handlebars');
+const through = require('through2');
 const plugin = require('./lib/plugins');
 const utils = require('./lib/utils');
-const MDEXTS = 'markdown,mkdown,mdown,mkdn,mkd,md';
 
 /**
  * Create an instance of `Hekyll` with the given `options`.
@@ -49,7 +49,7 @@ Hekyll.prototype.templates = function(patterns, options, dest) {
       .on('error', reject)
       .pipe(plugin.stripEmptyMatter())
       .on('error', reject)
-      .pipe(convert({prefix: '@'}))
+      .pipe(plugin.convert({prefix: '@'}))
       .on('error', reject)
       .pipe(plugin.format())
       .on('error', reject)
@@ -65,6 +65,7 @@ Hekyll.prototype.templates = function(patterns, options, dest) {
           case '.mkdown':
           case '.mkdn':
           case '.mkd':
+          case '.mdown':
           case '.md':
             file.extname = '.md';
             break;
@@ -103,8 +104,9 @@ Hekyll.prototype.copy = function(patterns, options, dest) {
     vfs.src(patterns, opts)
       .pipe(plugin.stripEmptyMatter())
       .on('error', reject)
-      .pipe(convert({yfm: false, prefix: '@'}))
+      .pipe(plugin.convert({yfm: false, prefix: '@'}))
       .on('error', reject)
+      .pipe(plugin.wrapFrame(['page', 'site']))
       .pipe(plugin.addImport(opts))
       .on('error', reject)
       .pipe(plugin.trim())
@@ -165,16 +167,17 @@ Hekyll.prototype.text = function(options, dest) {
 
   const patterns = opts.patterns || [
     '**/*',
-    `!**/{_*,assets,public,*.{html,liquid,${MDEXTS},scss,txt,xml}}`,
+    `!**/{_*,assets,public,*.{html,liquid,${utils.MDEXTS},scss,txt,xml}}`,
     '!**/{*.,}gem*',
     '!**/script{,/**}',
-    '!**/.git{,/**}',
-    '{LICENSE*,README*}'
+    '!**/.git{,/**}'
   ];
 
   return new Promise(function(resolve, reject) {
     vfs.src(patterns, opts)
       .pipe(plugin.stripEmptyMatter())
+      .on('error', reject)
+      .pipe(plugin.convert({prefix: '@'}))
       .on('error', reject)
       .pipe(vfs.dest(utils.toDest(opts)))
       .on('error', reject)
@@ -189,8 +192,7 @@ Hekyll.build = function(options) {
 
   const hekyll = new Hekyll(options);
   const patterns = hekyll.options.patterns || [
-    `{,_*/**/}*.{html,liquid,${MDEXTS},textile}`,
-    '!**/{README*,LICENSE*,CONTRIBUTING*}'
+    `{,_*/**/}*.{html,liquid,${utils.MDEXTS},textile}`
   ];
 
   function dest(dir) {
@@ -201,14 +203,12 @@ Hekyll.build = function(options) {
 
   return hekyll.templates(patterns, dest())
     .then(hekyll.assets('{assets,public}/**', dest()))
+    .then(hekyll.copy('**/*.{xml,txt}', dest()))
     .then(hekyll.copy('_config.yml', dest()))
     .then(hekyll.copy('_data/**', dest('_data')))
     .then(hekyll.copy('_sass/**', dest('_sass')))
     .then(hekyll.copy('styles.scss', {addImport: 'custom'}, dest('_sass')))
-    .then(hekyll.copy('**/*.{xml,txt}', function(file) {
-      file.extname += '.hbs';
-      return '';
-    }))
+    .then(hekyll.copy(path.join(__dirname, 'custom.scss'), dest('_sass')))
     .then(hekyll.text(dest()));
 };
 

@@ -27,7 +27,7 @@ describe('hekyll', function() {
     return hekyll.build({cwd: fixtures(), destBase: actual()})
       .then(function() {
         assert(fs.existsSync(actual()))
-        assert(fs.existsSync(actual('atom.xml.hbs')))
+        assert(fs.existsSync(actual('atom.xml')))
         assert(fs.existsSync(actual('_config.yml')))
         assert(fs.existsSync(actual('_layouts/default.hbs')))
         del.sync(actual());
